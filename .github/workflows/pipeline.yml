@@ -1,0 +1,46 @@
+name: Salesforce CI/CD - Deploy to QA
+
+# Trigger the workflow on push or pull request to the 'main' branch
+on:
+  push:
+    branches: [ Dev, QA, UAT, main]
+  pull_request:
+    branches: [ Dev, QA, UAT, main ]
+
+jobs:
+  deploy-to-qa:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the code from your repository
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      # 2. Set up Node.js (required for Salesforce CLI)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # 3. Install Salesforce CLI (sf)
+      - name: Install Salesforce CLI
+        run: npm install @salesforce/cli --global
+
+      # 4. Authenticate to the QA Sandbox
+      # Note: In a real project, you would use a JWT Key File stored in GitHub Secrets
+      - name: Authenticate to QA Org
+        run: |
+          echo "${{ secrets.QA_ORG_JWT_KEY }}" > server.key
+          sf org login jwt --client-id ${{ secrets.CONSUMER_KEY }} --jwt-key-file server.key --username ${{ secrets.QA_USERNAME }} --instance-url https://test.salesforce.com --alias qa-org
+
+      # 5. Convert Source to Metadata Format (if needed for deployment)
+      - name: Convert Source to Metadata
+        run: sf project convert metadata --root-dir force-app/main/default --output-dir mdapi-output
+
+      # 6. Deploy to the QA Sandbox
+      - name: Deploy to QA Sandbox
+        run: sf project deploy start --target-org qa-org --metadata-dir mdapi-output --wait 10
+
+      # 7. Run Apex Tests (Optional but recommended for QA)
+      - name: Run Apex Tests
+        run: sf apex run test --target-org qa-org --code-coverage --result-format human --synchronous
